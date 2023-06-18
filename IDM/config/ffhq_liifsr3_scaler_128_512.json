@@ -1,0 +1,106 @@
+{
+    "name": "ffhq_scaler_128x96_512x384",
+    "phase": "val", // train or val
+
+    "path": { //set the path
+        "log": "logs",
+        "tb_logger": "tb_logger",
+        "results": "results",
+        "results_hr": "results/hr",
+        "results_sr": "/data/aolivepe/newpreprocessedData/psnr_IDM_2",
+        //"results_sr": "results/sr",
+        "results_lr": "results/lr",
+        "process": "results/process",
+        "checkpoint": "checkpoint",
+        "resume_state": "checkpoint"
+    },
+    "datasets": {
+        "train": {
+            "name": "FFHQ",
+            "mode": "LRHR", // whether need LR img
+            "dataroot": "./../../../../data/aolivepe/newpreprocessedData",
+            "datatype": "img", //lmdb or img, path of img files
+            "l_resolution_height": 96,
+            "l_resolution_width": 128,
+            "r_resolution_height": 384,
+            "r_resolution_width": 512,
+            "sample_q": null,
+            "batch_size": 4,
+            "num_workers": 8,
+            "augment": true,
+            "use_shuffle": false,
+            "data_len": -1 // -1 represents all data used in train
+        },
+        "val": {
+            "name": "CelebaHQ",
+            "mode": "LRHR",
+            "dataroot": "/data/aolivepe/newpreprocessedData/psnr_low",
+            //"dataroot": "./../../../../data/aolivepe/newpreprocessedData",
+            "datatype": "img", //lmdb or img, path of img files
+            "l_resolution": 128,
+            "r_resolution": 512,
+            "batch_size": 1,
+            "data_len":-1 // data length in validation 
+        }
+    },
+    "model": {
+        "which_model_G": "sr3", // use the ddpm or sr3 network structure
+        "pretrained_encoder": true,
+        "finetune_norm": false,
+        "unet": {
+            "in_channel": 2, // 6
+            "out_channel": 1,
+            "inner_channel": 64, // 66
+            "channel_multiplier": [
+                1,
+                2,
+                4,
+                8,
+                8
+            ],
+            "attn_res": [
+                16
+            ],
+            "res_blocks": 2,
+            "dropout": 0.2
+        },
+        "beta_schedule": { // use munual beta_schedule for acceleration
+            "train": {
+                "schedule": "linear",
+                "n_timestep": 2000,
+                "linear_start": 1e-6,
+                "linear_end": 1e-2
+            },
+            "val": {
+                "schedule": "linear",
+                "n_timestep": 2000,
+                "linear_start": 1e-6,
+                "linear_end": 1e-2
+            }
+        },
+        "diffusion": {
+            "image_height": 384,
+            "image_width": 512,
+            "channels": 1, //sample channel
+            "conditional": true // unconditional generation or unconditional generation(super_resolution)
+        }
+    },
+    "train": {
+        "n_iter": 1000000,
+        "val_freq": 3e3,   // 1e4
+        "save_checkpoint_freq": 3e3,
+        "print_freq": 200,
+        "optimizer": {
+            "type": "adam",
+            "lr": 1e-4
+        },
+        "ema_scheduler": { // not used now
+            "step_start_ema": 5000,
+            "update_ema_every": 1,
+            "ema_decay": 0.9999
+        }
+    },
+    "wandb": {
+        "project": "sr_ffhq_128_512"
+    }
+}
