@@ -1,6 +1,6 @@
 
 import torch
-from video_diffusion_pytorchAVI2 import Unet3DNP, GaussianDiffusionNP, TrainerNP
+from video_diffusion import Unet3D, GaussianDiffusion, Trainer
 import os
 import math
 import copy
@@ -40,14 +40,14 @@ device0 = 'cuda:0'
 device1 = 'cuda:1'
 device2 = 'cuda:2'
 
-unet = Unet3DNP(
+unet = Unet3D(
     dim = 64,
     device0 = device0,  #needs to be the same as the device from GaussianDiffusion and the trainer
     device1 = device1,
     device2 = device2
 )
 
-diffusion = GaussianDiffusionNP(
+diffusion = GaussianDiffusion(
     height = 96,
     width = 128,
     num_frames = 16,
@@ -125,5 +125,4 @@ for n in reversed(range(224)):
     all_videos_list = torch.cat(all_videos_list, dim = 0)
 
     one_gif = rearrange(all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i = num_sample_rows)
-    #video_path = str(self.results_folder / str(f'{milestone}.avi'))
     video_to_images(one_gif, video_path_tiff_fvd, str(n))

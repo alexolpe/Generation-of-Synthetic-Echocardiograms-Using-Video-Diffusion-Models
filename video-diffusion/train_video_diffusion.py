@@ -1,6 +1,6 @@
 
 import torch
-from video_diffusion_pytorchAVI2 import Unet3DNP, GaussianDiffusionNP, TrainerNP
+from video_diffusion import Unet3D, GaussianDiffusion, Trainer
 import os
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -18,14 +18,14 @@ device0 = 'cuda:0'
 device1 = 'cuda:1'
 device2 = 'cuda:2'
 
-unet = Unet3DNP(
+unet = Unet3D(
     dim = 64,
     device0 = device0,  #needs to be the same as the device from GaussianDiffusion and the trainer
     device1 = device1,
     device2 = device2
 )
 
-diffusion = GaussianDiffusionNP(
+diffusion = GaussianDiffusion(
     height = 96,
     width = 128,
     num_frames = 16,
@@ -33,7 +33,7 @@ diffusion = GaussianDiffusionNP(
     device = device0    #device where the alphas will be stored. needs to be the same as where the training data is stored at the beginning
 )
 
-trainer = TrainerNP(
+trainer = Trainer(
     unet,
     diffusion,
     os.path.abspath(os.path.join(script_path, '..', '..', '..', 'data', 'aolivepe', 'newpreprocessedData', 'joinedframes_128x96')),                         # this folder path needs to contain all your training data, as .gif files, of correct image size and number of frames
@@ -44,7 +44,7 @@ trainer = TrainerNP(
     train_num_steps = 126000,         # total training steps
     gradient_accumulate_every = 2,    # gradient accumulation steps
     ema_decay = 0.995,                # exponential moving average decay
-    amp = False,                       # turn on mixed precision
+    amp = False,                      # turn on mixed precision
     num_sample_rows = 1,
     loss_type = 'l1',    # L1 or L2
     sample = False,
