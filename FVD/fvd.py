@@ -28,6 +28,7 @@ import os
 import random
 import glob
 import cv2
+import argparse
 
 # Number of videos must be divisible by 16.
 NUMBER_OF_VIDEOS = 100
@@ -35,29 +36,9 @@ VIDEO_LENGTH = 15
 
 os.environ['CUDA_VISIBLE_DEVICES']='7'
 
-
-def get_video_tensor(folder_path):
-  # Get a list of all video file names in the folder
-  video_files = [file for file in os.listdir(folder_path) if file.endswith('.gif')]
-
-  # Randomly select 16 video files from the list
-  random_files = random.sample(video_files, NUMBER_OF_VIDEOS)
-
-  # Read and convert the videos into TensorFlow tensors
-  video_tensors = []
-  for file in random_files:
-      video_path = os.path.join(folder_path, file)
-      video_tensor = tf.image.decode_gif(tf.io.read_file(video_path))
-      video_tensors.append(video_tensor)
-
-  # Concatenate the video tensors into a single TensorFlow tensor
-  video_tensor = tf.stack(video_tensors)
-  return video_tensor
-
 def get_tensor(path):
   video_file_paths = glob.glob(path)
   print('ordered', len(video_file_paths), type(video_file_paths))
-  #video_file_paths = os.listdir(video_file_paths)
   random.shuffle(video_file_paths)
   print('shuffled', len(video_file_paths), type(video_file_paths))
 
@@ -67,7 +48,6 @@ def get_tensor(path):
   for video_path in video_file_paths:
     jj = random_number+NUMBER_OF_VIDEOS
     if num_videos >= 50 and num_videos < 200:
-    #if num_videos <= 150:
       video = cv2.VideoCapture(video_path)
       video_frames = []
       
@@ -85,23 +65,14 @@ def get_tensor(path):
   return tensor
 
 def main(argv):
-  # Set the path to the folder containing the videos
-  real_path = '/data/aolivepe/newpreprocessedData/videos_512x384/*.avi'
-  fake_path = '/data/aolivepe/REAL_EXPERIMENTS/SUPER_RESOLUTION/SRGAN/*.avi'
+  real_path = os.path.join(FLAGS.real, '*.avi')
+  fake_path = os.path.join(FLAGS.fake, '*.avi')
+  '''real_path = '/data/aolivepe/newpreprocessedData/videos_512x384/*.avi'
+  fake_path = '/data/aolivepe/REAL_EXPERIMENTS/SUPER_RESOLUTION/SRGAN/*.avi'''
   
   del argv
   with tf.Graph().as_default():
 
-    '''first_set_of_videos = get_video_tensor(real_path)
-    print('first_set_of_videos', first_set_of_videos.shape)
-    second_set_of_videos = get_video_tensor(fake_path)
-    print('second_set_of_videos', second_set_of_videos.shape)'''
-    
-    first_set_of_videos_path = '/../../../data/aolivepe/newpreprocessedData/originalgif_64x64/*.gif'
-    second_set_of_videos_path = '/../../../data/aolivepe/newpreprocessedData/originalgif_64x64/*.gif'
-    
-    #first_set_of_videos = tf.zeros([NUMBER_OF_VIDEOS, VIDEO_LENGTH, 64, 64, 3])
-    #second_set_of_videos = tf.ones([NUMBER_OF_VIDEOS, VIDEO_LENGTH, 64, 64, 3]) * 255
     first_set_of_videos=get_tensor(real_path)
     print('first_set_of_videos', first_set_of_videos.shape)
     second_set_of_videos=get_tensor(fake_path)
@@ -120,4 +91,14 @@ def main(argv):
 
 
 if __name__ == "__main__":
-  tf.app.run(main)
+  parser = argparse.ArgumentParser(description='Example argument parser')
+
+  # Add arguments
+  parser.add_argument('--real', help='Real file path')
+  parser.add_argument('--fake', help='Fake file path')
+
+  # Parse the arguments
+  FLAGS, _ = parser.parse_known_args()
+
+  # Call the main function using tf.app.run()
+  tf.app.run(main=main)
