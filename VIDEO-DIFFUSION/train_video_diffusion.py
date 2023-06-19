@@ -2,13 +2,7 @@
 import torch
 from video_diffusion import Unet3D, GaussianDiffusion, Trainer
 import os
-import torch.distributed as dist
-import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torchsummary import summary
 
-
-    
 os.environ['CUDA_VISIBLE_DEVICES']='6, 5'
 device='cuda:0'
 
@@ -36,21 +30,19 @@ diffusion = GaussianDiffusion(
 trainer = Trainer(
     unet,
     diffusion,
-    os.path.abspath(os.path.join(script_path, '..', '..', '..', 'data', 'aolivepe', 'newpreprocessedData', 'joinedframes_128x96')),                         # this folder path needs to contain all your training data, as .gif files, of correct image size and number of frames
+    os.path.abspath(os.path.join(script_path, '..', '..', '..', '..', 'data', 'aolivepe', 'newpreprocessedData', 'videos_128x96')),                         # this folder path needs to contain all your training data, as .gif files, of correct image size and number of frames
     train_batch_size = 4,
     train_lr = 1e-4,
     save_and_sample_every = 1000,
-    results_folder = os.path.abspath(os.path.join(script_path, '..', '..', '..', 'data', 'aolivepe', 'cos_tau_3')),
+    results_folder = os.path.abspath(os.path.join(script_path, '..', '..', '..', '..', 'data', 'aolivepe', 'test')),
     train_num_steps = 126000,         # total training steps
     gradient_accumulate_every = 2,    # gradient accumulation steps
     ema_decay = 0.995,                # exponential moving average decay
     amp = False,                      # turn on mixed precision
     num_sample_rows = 1,
     loss_type = 'l1',    # L1 or L2
-    sample = False,
+    sample = True,
     continuein = 0
 )
-
-
 
 trainer.train(dev=device0) #device where the training data will be stored at the beginning

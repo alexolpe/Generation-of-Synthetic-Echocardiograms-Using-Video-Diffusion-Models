@@ -21,8 +21,6 @@ from einops import rearrange
 from einops_exts import check_shape, rearrange_many
 
 from rotary_embedding_torch import RotaryEmbedding
-
-from video_diffusion_pytorch.text import tokenize, bert_embed, BERT_MODEL_DIM
 from prettytable import PrettyTable
 from torchsummary import summary
 
@@ -72,7 +70,7 @@ def is_list_str(x):
 # relative positional bias
 
 class RelativePositionBias(nn.Module):
-    #A: Take a look at https://gist.github.com/huchenxucs/c65524185e8e35c4bcfae4059f896c16
+    #A: https://gist.github.com/huchenxucs/c65524185e8e35c4bcfae4059f896c16
     def __init__(
         self,
         heads = 8,
@@ -92,15 +90,6 @@ class RelativePositionBias(nn.Module):
 
         num_buckets //= 2
         ret += (n < 0).long() * num_buckets
-        #A: ret=
-        # tensor([[ 0, 16, 16, 16, 16, 16, 16, 16],
-        # [ 0,  0, 16, 16, 16, 16, 16, 16],
-        # [ 0,  0,  0, 16, 16, 16, 16, 16],
-        # [ 0,  0,  0,  0, 16, 16, 16, 16],
-        # [ 0,  0,  0,  0,  0, 16, 16, 16],
-        # [ 0,  0,  0,  0,  0,  0, 16, 16],
-        # [ 0,  0,  0,  0,  0,  0,  0, 16],
-        # [ 0,  0,  0,  0,  0,  0,  0,  0]])
         n = torch.abs(n)
 
         max_exact = num_buckets // 2
@@ -112,15 +101,6 @@ class RelativePositionBias(nn.Module):
         val_if_large = torch.min(val_if_large, torch.full_like(val_if_large, num_buckets - 1))
 
         ret += torch.where(is_small, n, val_if_large)
-        #A: ret=
-        # tensor([[ 0, 17, 18, 19, 20, 21, 22, 23],
-        # [ 1,  0, 17, 18, 19, 20, 21, 22],
-        # [ 2,  1,  0, 17, 18, 19, 20, 21],
-        # [ 3,  2,  1,  0, 17, 18, 19, 20],
-        # [ 4,  3,  2,  1,  0, 17, 18, 19],
-        # [ 5,  4,  3,  2,  1,  0, 17, 18],
-        # [ 6,  5,  4,  3,  2,  1,  0, 17],
-        # [ 7,  6,  5,  4,  3,  2,  1,  0]])
         return ret
 
     def forward(self, n):
@@ -128,26 +108,7 @@ class RelativePositionBias(nn.Module):
         q_pos = torch.arange(n, dtype = torch.long)#A: [0,1,2,3,4,5,6,7]
         k_pos = torch.arange(n, dtype = torch.long)
         rel_pos = rearrange(k_pos, 'j -> 1 j') - rearrange(q_pos, 'i -> i 1')
-        #A: si n=8, rel_pos=
-        # tensor([[ 0,  1,  2,  3,  4,  5,  6,  7],
-        # [-1,  0,  1,  2,  3,  4,  5,  6],
-        # [-2, -1,  0,  1,  2,  3,  4,  5],
-        # [-3, -2, -1,  0,  1,  2,  3,  4],
-        # [-4, -3, -2, -1,  0,  1,  2,  3],
-        # [-5, -4, -3, -2, -1,  0,  1,  2],
-        # [-6, -5, -4, -3, -2, -1,  0,  1],
-        # [-7, -6, -5, -4, -3, -2, -1,  0]])
         rp_bucket = self._relative_position_bucket(rel_pos, num_buckets = self.num_buckets, max_distance = self.max_distance)
-        #A: rp_bucket=
-        # tensor([
-        # [ 0, 17, 18, 19, 20, 21, 22, 23],
-        # [ 1,  0, 17, 18, 19, 20, 21, 22],
-        # [ 2,  1,  0, 17, 18, 19, 20, 21],
-        # [ 3,  2,  1,  0, 17, 18, 19, 20],
-        # [ 4,  3,  2,  1,  0, 17, 18, 19],
-        # [ 5,  4,  3,  2,  1,  0, 17, 18],
-        # [ 6,  5,  4,  3,  2,  1,  0, 17],
-        # [ 7,  6,  5,  4,  3,  2,  1,  0]])
         values = self.relative_attention_bias(rp_bucket)
         return rearrange(values, 'i j h -> h i j')
 
@@ -168,7 +129,6 @@ class EMA():
     def update_average(self, old, new):
         if old is None:
             return new
-        #A: el sentit de la formula que retorno https://pytorch.org/ignite/generated/ignite.handlers.ema_handler.EMAHandler.html
         return old * self.beta + (1 - self.beta) * new
 
 class Residual(nn.Module):
@@ -276,7 +236,6 @@ class SpatialLinearAttention(nn.Module):
         #A: self.scale = dim_head ** -0.5   al final he fet l'escalat amb sqrt(d_k) 
         self.heads = heads
         hidden_dim = dim_head * heads
-        #A: Les tres lines de dalt son iguals que les de la classe Attention (Temporal Attention)
         
         self.to_qkv = nn.Conv2d(dim, dim_head * 3, 1, bias = False)
         self.to_out = nn.Conv2d(dim_head, dim, 1)
@@ -284,7 +243,6 @@ class SpatialLinearAttention(nn.Module):
     def forward(self, x):
         b, c, f, h, w = x.shape
         
-        #A: ES REALMENT NECESSARIA LA LINEA DE SOTA? si perq la conv necessita que els 3 ultims canals siguin els que son
         x = rearrange(x, 'b c f h w -> (b f) c h w')
 
         qkv = self.to_qkv(x)
@@ -314,59 +272,6 @@ class SpatialLinearAttention(nn.Module):
         
         out = self.to_out(img_size)
         return rearrange(out, '(b f) c h w -> b c f h w', b = b, f = f)
-    
-class TempAttention(nn.Module):
-    def __init__(
-        self,
-        dim,
-        heads = 4,
-        dim_head = 32,
-        rotary_emb = None
-    ):
-        super().__init__()
-        #A: self.scale = dim_head ** -0.5   al final he fet l'escalat amb sqrt(d_k) 
-        self.heads = heads
-        hidden_dim = dim_head * heads
-        #A: Les tres lines de dalt son iguals que les de la classe Attention (Temporal Attention)
-        
-        self.to_qkv = nn.Conv2d(dim, dim_head * 3, 1, bias = False)
-        self.to_out = nn.Conv2d(dim_head, dim, 1)
-    def forward(
-        self,
-        x,
-        pos_bias = None,
-        focus_present_mask = None
-    ):
-        b, c, f, h, w = x.shape
-        
-        #A: ES REALMENT NECESSARIA LA LINEA DE SOTA? si perq la conv necessita que els 3 ultims canals siguin els que son
-        x = rearrange(x, 'b c f h w -> (b w) c f h')
-
-        qkv = self.to_qkv(x)
-        qkv = rearrange(qkv, 'b e f h -> b e (h f)')
-        qkv = qkv.chunk(3, dim = 1)
-        q, k, v = rearrange_many(qkv, 'b e (h a) -> b h e a', h = self.heads)
-        #A: q, k, v passen a ser de dimensio (b·f) x num_heads x dim_head x num_pixels_per_frame on cadascun dels coeficients de la ultima dimensio esta multiplicat per un parametre que s'apendra
-        #A: fins aqui te sentit. Les qi, ki, vi son els pixels multiplicats per un parametre a aprendre. Com que estem fent atencio espaial, "els elements de la sequencia" son els pixels
-
-        dot_product = torch.einsum('b h d m, b h d n -> b h m n', q, k)
-        scale_factor = math.sqrt(k.size(-1))
-        scaled_dot_product = dot_product / scale_factor
-        similarity_scores = F.softmax(scaled_dot_product, dim=-1)
-        #A: similarity_scores es de dimensio (b·f) x num_heads x num_pixels_per_frame x num_pixels_per_frame. A traves de la ultima dimensio recorro les k i a traves de la penultima les q
-
-        weighted_values = torch.einsum('b h e d, b h a d -> b h e a', similarity_scores, v) #A: (num_pixels_per_frame x num_pixels_per_frame) x (num_pixels_per_frame x dim_head) = num_pixels_per_frame x dim_head)
-        #A: weighted_values es de dimensio (b·f) x num_heads x num_pixels_per_frame x dim_head 
-        #A: IMPORTANT: (la matriu dim_head x dim_head conte la informacio de com es relacionen els pixels dins de la imatge. Si mes no, aquesta informacio es independent a la posicio que ocupen. Per aixo s'hauria de valorar utilitzar algun tipus de positional embedding per tambe mantenir informacio sobre la posicio dels pixels dins de la imatge)
-        
-        concat_values = rearrange(weighted_values, 'b h p e -> b e (h p)')
-        #A:concat_values es de dimensio b*f, dim_head, h*w
-
-        img_size = rearrange(concat_values, 'b e (h f) -> b e f h', h = h, f = f)
-        #A:img_size es de dimensio b*f, dim_head, h, w
-        
-        out = self.to_out(img_size)
-        return rearrange(out, '(b w) c f h -> b c f h w', b = b, w = w)
 
 class RelativePosition(nn.Module):
 
@@ -420,10 +325,7 @@ class TempAttention2_0(nn.Module):
         query = x
         key = x
         value = x
-        
-        #query = [batch size, query len, hid dim]
-        #key = [batch size, key len, hid dim]
-        #value = [batch size, value len, hid dim]
+
         batch_size = query.shape[0]
         len_k = key.shape[1]
         len_q = query.shape[1]
@@ -457,135 +359,16 @@ class TempAttention2_0(nn.Module):
         weight2 = weight2.transpose(0, 1).contiguous().view(batch_size, self.n_heads, len_q, self.head_dim)
 
         x = weight1 + weight2
-        
         #x = [batch size, n heads, query len, head dim]
-        
         x = x.permute(0, 2, 1, 3).contiguous()
-        
         #x = [batch size, query len, n heads, head dim]
-        
         x = x.view(batch_size, -1, self.hid_dim)
-        
         #x = [batch size, query len, hid dim]
-        
         x = self.fc_o(x)
-        
         #x = [batch size, query len, hid dim]
-        
         x = rearrange(x, '(b h w) f c -> b c f h w', h = h, w = w, b = b)
         
         return x    
-
-# attention along space and time
-
-class EinopsToAndFrom(nn.Module):
-    def __init__(self, from_einops, to_einops, fn):
-        #A: fn es un objecte de la classe Attention
-        super().__init__()
-        self.from_einops = from_einops
-        self.to_einops = to_einops
-        self.fn = fn
-
-    def forward(self, x, **kwargs):
-        #A: x es el vector de dimensio bxdim'c'xfxhxw que ha estat normalitzat en la dimensio c. El dim es el nombre de canals a la sortida de la convolucio feta previament
-        shape = x.shape
-        reconstitute_kwargs = dict(tuple(zip(self.from_einops.split(' '), shape)))
-        #A: Si shape = (2, 3, 4, 5, 6) llavors reconstitute_kwargs es
-        # {
-        #     'b': 2,
-        #     'c': 3,
-        #     'f': 4,
-        #     'h': 5,
-        #     'w': 6
-        # }
-        #A: x bxdim'c'xfxhxw
-        x = rearrange(x, f'{self.from_einops} -> {self.to_einops}')
-        #A: x bxh·wxfxdim'c'
-        x = self.fn(x, **kwargs)
-        x = rearrange(x, f'{self.to_einops} -> {self.from_einops}', **reconstitute_kwargs)
-        return x
-
-class Attention(nn.Module):
-    #A: LA CLASSE ATTENTION ES LA QUE FEM SERVIR PER TEMPORAL ATTENTION. Bueno, just a sobre de la classe EinopsToAndFrom ho defineix com attention along space and time
-    def __init__(
-        self,
-        dim,
-        heads = 4,
-        dim_head = 32,
-        rotary_emb = None
-    ):
-        super().__init__()
-        self.scale = dim_head ** -0.5
-        self.heads = heads
-        hidden_dim = dim_head * heads
-
-        self.rotary_emb = rotary_emb
-        self.to_qkv = nn.Linear(dim, hidden_dim * 3, bias = False)
-        self.to_out = nn.Linear(hidden_dim, dim, bias = False)
-        #A: first argument is input size and second argument is output size
-
-    def forward(
-        self,
-        x,
-        pos_bias = None,
-        focus_present_mask = None
-    ):
-        #A: x bxh·wxfxdim'c' normalitzat en la dimensio c
-        n, device = x.shape[-2], x.device
-        #A: n es el nombre de frames. Fent memoria enrere aquest nombre de frames ve del nombre de frames de les imatges utilitzades d'input
-
-        #A: La dimensio que entra a nn.Linear es la dels canals, es a dir, l'input de la primera neurona sera (-,-,-,0), el de la segona (-,-,-,1)...
-        qkv = self.to_qkv(x).chunk(3, dim = -1)
-        #A: qkv es l'output de self.to_qkv(x) dividit en la dimensio dels canals en un tuple de tres tensors es a dir bxh·wxfx(dim'c')/3
-
-        # split out heads
-        
-        q, k, v = rearrange_many(qkv, '... n (h d) -> ... h n d', h = self.heads)
-        #A: q, k, v pasen a ser de dimensio b x h·w x heads x f x dim_heads
-        # scale
-        q = q * self.scale
-
-        # rotate positions into queries and keys for time attention
-        #A: we enter to this if to take into account the relative position
-        #A: BUT IN THE INIT_TEMPORAL_ATTN WE ARE NOT REALLY TAKING INTO ACCOUNT THE TEMPORAL (FRAME) INFORMATION, RIGHT? EACH OF THE CHANNELS THAT WE ARE TRYING TO CREATE ITS EMBEDDING REPRESENTATION ONLY CONTAINS FEATURES RELATED WITH THE SPATIAL (HxW) DIMENSION RIGHT? BECAUSE OF THE Conv3D WE DID WITH (1,7,7)
-        if exists(self.rotary_emb):
-            q = self.rotary_emb.rotate_queries_or_keys(q)
-            k = self.rotary_emb.rotate_queries_or_keys(k)
-        # similarity
-        #A: fem el producte escalar entre ks i qs dels diferents heads per obtenir la semblansa
-        sim = einsum('... h i d, ... h j d -> ... h i j', q, k)
-        #A: es fa el producte escalar de les matrius de dimensio f x dim_heads on a dim_heads hi ha les ki i qi de cada head
-        #A: el producte escalar (f x dim_heads) · (f x dim_heads)^T = (f x f)
-
-        #A: CREC QUE LA SUMA NO ESTA BEN FETA PERQUE SIM ES EN LA DIMENSIO DELS CANALS I POS_BIAS EN LA DIMENSIO DELS FRAMES
-        # relative positional bias
-        if exists(pos_bias):
-            #A: sim torch.Size([4, 16384, 8, 8, 8]) b x h·w x heads x f x f
-            #A: pos_bias torch.Size([8, 8, 8]) embedding_dim (=num_heads) x f x f
-            sim = sim + pos_bias
-            #A: sim torch.Size([4, 16384, 8, 8, 8])
-
-        if exists(focus_present_mask) and not (~focus_present_mask).all():
-            attend_all_mask = torch.ones((n, n), device = device, dtype = torch.bool)
-            attend_self_mask = torch.eye(n, device = device, dtype = torch.bool)
-
-            mask = torch.where(
-                rearrange(focus_present_mask, 'b -> b 1 1 1 1'),
-                rearrange(attend_self_mask, 'i j -> 1 1 1 i j'),
-                rearrange(attend_all_mask, 'i j -> 1 1 1 i j'),
-            )
-
-            sim = sim.masked_fill(~mask, -torch.finfo(sim.dtype).max)
-
-        # numerical stability
-
-        sim = sim - sim.amax(dim = -1, keepdim = True).detach()
-        attn = sim.softmax(dim = -1)
-
-        # aggregate values
-        out = einsum('... h i j, ... h j d -> ... h i d', attn, v)
-        out = rearrange(out, '... h n d -> ... n (h d)')
-        return self.to_out(out)
     
 # model
 
@@ -593,37 +376,22 @@ class PrimeraCapaDown(nn.Module):
     def __init__(
         self, 
         dim,
-        cond_dim = None,
-        out_dim = None,
-        dim_mults=(1, 2, 4, 8),
         channels = 1,
-        attn_heads = 8,
-        attn_dim_head = 32,
-        use_bert_text_cond = False,
         init_dim = None,
         init_kernel_size = 7,
-        use_sparse_linear_attn = True,
-        block_type = 'resnet',
         resnet_groups = 8
     ):
         super().__init__()
         
         time_dim = dim * 4
-        
-        rotary_emb = RotaryEmbedding(min(32, attn_dim_head))
-
-        temporal_attn = lambda dim: EinopsToAndFrom('b c f h w', 'b (h w) f c', Attention(dim, heads = attn_heads, dim_head = attn_dim_head, rotary_emb = rotary_emb))
-        
+                
         init_dim = default(init_dim, dim)
         assert is_odd(init_kernel_size)
         init_padding = init_kernel_size // 2
         self.init_conv = nn.Conv3d(channels, init_dim, (1, init_kernel_size, init_kernel_size), padding = (0, init_padding, init_padding))
-        
-        self.init_temporal_attn = Residual(PreNorm(init_dim, temporal_attn(init_dim)))
-        
+                
         self.downs = nn.ModuleList([])
         in_out = [(64, 64)]
-        # block type
 
         block_klass = partial(ResnetBlock, groups = resnet_groups)
         block_klass_cond = partial(block_klass, time_emb_dim = time_dim)
@@ -645,9 +413,6 @@ class PrimeraCapaDown(nn.Module):
         #A: x es tensor de dimensions b x dim x f x h x w (hem especificat que el nombre de canals a la sortida sigui dim)
         #A: per fer-ho, per cada batch, hem utilitzat init_dim filtres diferents de dimensio (3'c', 1'f', 7'h', 7'w') amb un padding de (0,3,3)
 
-        #x = self.init_temporal_attn(x, pos_bias = time_rel_pos_bias)
-        #A: self.init_temporal_attn es un residual bloc aixi que retorna x=x+x' on x' es la x a la que se li ha aplicat attention
-        #A: x continua sent de dimensio b x dim x f x h x w
         r = x.clone()
         
         h=[]
@@ -665,26 +430,13 @@ class PrimeraCapaUp(nn.Module):
     def __init__(
         self, 
         dim,
-        cond_dim = None,
         out_dim = None,
-        dim_mults=(1, 2, 4, 8),
         channels = 1,
-        attn_heads = 8,
-        attn_dim_head = 32,
-        use_bert_text_cond = False,
-        init_dim = None,
-        init_kernel_size = 7,
-        use_sparse_linear_attn = True,
-        block_type = 'resnet',
         resnet_groups = 8
     ):
         super().__init__()
         
         time_dim = dim * 4
-        
-        rotary_emb = RotaryEmbedding(min(32, attn_dim_head))
-
-        temporal_attn = lambda dim: EinopsToAndFrom('b c f h w', 'b (h w) f c', Attention(dim, heads = attn_heads, dim_head = attn_dim_head, rotary_emb = rotary_emb))
         
         self.ups = nn.ModuleList([])
         in_out = [(64, 64)]
@@ -726,25 +478,12 @@ class SegonaCapa(nn.Module):
     def __init__(
         self, 
         dim,
-        cond_dim = None,
-        out_dim = None,
-        dim_mults=(1, 2, 4, 8),
-        channels = 1,
         attn_heads = 8,
-        attn_dim_head = 32,
-        use_bert_text_cond = False,
-        init_dim = None,
-        init_kernel_size = 7,
         use_sparse_linear_attn = True,
-        block_type = 'resnet',
         resnet_groups = 8):
         super().__init__()
         
         time_dim = dim * 4
-        
-        #rotary_emb = RotaryEmbedding(min(32, attn_dim_head))
-
-        #temporal_attn = lambda dim: EinopsToAndFrom('b c f h w', 'b (h w) f c', Attention(dim, heads = attn_heads, dim_head = attn_dim_head, rotary_emb = rotary_emb))
 
         self.downs1 = nn.ModuleList([])
         self.downs2 = nn.ModuleList([])
@@ -786,16 +525,11 @@ class SegonaCapa(nn.Module):
             
         mid_dim = 512 #A: agafa l'ultim dim_out del for anterior
         
-        #A: PER QUE CANVIA L'ORDRE DE LES OPERACIONS EN AQUESTA ZONA INTERMITJA? PER QUE NO SEGUEIX EL MATEIX ORDRE QUE AL FOR PREVI?
         self.mid_block1 = block_klass_cond(mid_dim, mid_dim)
 
-        #A: PER QUE AQUI CALCULA EL SPATIAL ATTENTION D'AQUESTA FORMA DIFERENT I NO COM AL FOR PREVI??
-        #spatial_attn = EinopsToAndFrom('b c f h w', 'b f (h w) c', Attention(mid_dim, heads = attn_heads))
-        #self.mid_spatial_attn = Residual(PreNorm(mid_dim, spatial_attn))
         self.mid_spatial_attn = Residual(PreNorm(mid_dim, SpatialLinearAttention(mid_dim, heads = attn_heads))) if use_sparse_linear_attn else nn.Identity()
         
         self.mid_temporal_attn = Residual(PreNorm(mid_dim, TempAttention2_0(mid_dim, n_heads = 1, dropout = 0.1)))
-        #self.mid_temporal_attn = Residual(PreNorm(mid_dim, TempAttention(mid_dim, heads = attn_heads)))
 
         self.mid_block2 = block_klass_cond(mid_dim, mid_dim)
 
@@ -888,9 +622,9 @@ class Unet3D(nn.Module):
         self.time_rel_pos_bias = RelativePositionBias(heads = attn_heads, max_distance = 32) # realistically will not be able to generate that many frames of video... yet
         # initial conv
         
-        self.u = PrimeraCapaDown(dim = 64, dim_mults = (1, 2, 4, 8)).to(self.device0)
-        self.dos = SegonaCapa(dim = 64, dim_mults = (1, 2, 4, 8)).to(self.device1)
-        self.tres = PrimeraCapaUp(dim = 64, dim_mults = (1, 2, 4, 8)).to(self.device0)
+        self.u = PrimeraCapaDown(dim = 64).to(self.device0)
+        self.dos = SegonaCapa(dim = 64).to(self.device1)
+        self.tres = PrimeraCapaUp(dim = 64).to(self.device0)
         
     def forward(
         self,
@@ -941,7 +675,7 @@ def cosine_beta_schedule(timesteps, s = 0.008):
     steps = timesteps + 1
     x = torch.linspace(0, timesteps, steps, dtype = torch.float64) #A: torch.linspace et crea un tnesor de dimensio steps amb valors equiespaiats entre 0 i timestep ordenats de mes petit a mes gran
     #A: per tant estem agafant beta com una constant que va creixent linealment (en realitat no es linealment perq a les proximes linies se li aplica cos) en cada timestep
-    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** (2 * 3) #ADUDA: perq aquesta formula? formula 18 WELL EXPLAINED
+    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** (2 * 1) 
     #A: ara alphas_cumprod es un tenosor que va d'un valor molt proxim a 1 a 0
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     #A: ara alphas_cumprod es un tenosor que va d'1 a 0
@@ -957,7 +691,6 @@ class GaussianDiffusion(nn.Module):
         height,
         width,
         num_frames,
-        text_use_bert_cls = False,
         channels = 1,
         timesteps = 1000, #A: timesteps es el nombre de vegades que fas froward i backward propagation en l'entrenament d'una xarxa neuronal
         loss_type = 'l1',
@@ -985,12 +718,9 @@ class GaussianDiffusion(nn.Module):
         self.num_timesteps = int(timesteps)
         self.loss_type = loss_type
 
-        # register buffer helper function that casts float64 to float32
-
         register_buffer = lambda name, val: self.register_buffer(name, val.to(torch.float32).to(self.device))
         #A: register_buffer es un metode de la classe Module (superclasse de GaussianDiffusion)
         
-        #ADUDA: no acabo d'entendre la utilitat del register_buffer
         register_buffer('betas', betas)
         register_buffer('alphas', alphas)
         register_buffer('alphas_cumprod', alphas_cumprod)
@@ -1009,7 +739,6 @@ class GaussianDiffusion(nn.Module):
         # calculations for posterior q(x_{t-1} | x_t, x_0)
 
         posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
-        #A: formula 10 WELL EXPLAINED
         
         # above: equal to 1. / (1. / (1. - alpha_cumprod_tm1) + alpha_t / beta_t)
 
@@ -1020,12 +749,7 @@ class GaussianDiffusion(nn.Module):
         register_buffer('posterior_log_variance_clipped', torch.log(posterior_variance.clamp(min =1e-20)))
         register_buffer('posterior_mean_coef1', betas * torch.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod))
         register_buffer('posterior_mean_coef2', (1. - alphas_cumprod_prev) * torch.sqrt(alphas) / (1. - alphas_cumprod))
-        #A: posterior_mean_coef1 I posterior_mean_coef2 formen part de la formula 11 de WELL EXPLAINED
-
-        # text conditioning parameters
-
-        self.text_use_bert_cls = text_use_bert_cls
-
+        
         # dynamic thresholding when sampling
 
         self.use_dynamic_thres = use_dynamic_thres
@@ -1043,12 +767,6 @@ class GaussianDiffusion(nn.Module):
             extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t -
             extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise
         )
-        
-        '''#A: seguint el metode del well-explained (improved DDPM)
-        return (
-            extract(self.sqrt_alphas, t, x_t.shape) * x_t -
-            extract(self.sqrt_alphas * self.coef2x0, t, x_t.shape) * noise
-        )'''
 
     def q_posterior(self, x_start, x_t, t):
         posterior_mean = (
@@ -1059,9 +777,7 @@ class GaussianDiffusion(nn.Module):
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
-    def p_mean_variance(self, unet, x, t, clip_denoised: bool, cond = None, cond_scale = 1.):
-        #A: esta utilitzant la formula 11 del WELL EXPLAINED
-        
+    def p_mean_variance(self, unet, x, t, clip_denoised: bool, cond = None, cond_scale = 1.):        
         #A: el noise que passem com argument al metode predict_start_from_noise es el noise que la unet predeix que s'ha afegit en el corresponent timestep
         x_recon = self.predict_start_from_noise(x, t=t, noise = unet.forward(x, t))
 
@@ -1073,6 +789,7 @@ class GaussianDiffusion(nn.Module):
                     self.dynamic_thres_percentile,
                     dim = -1
                 )
+                print('ENTRAAA??')
 
                 s.clamp_(min = 1.)
                 s = s.view(-1, *((1,) * (x_recon.ndim - 1)))
@@ -1109,9 +826,6 @@ class GaussianDiffusion(nn.Module):
     @torch.inference_mode()
     def sample(self, unet, cond = None, cond_scale = 1., batch_size = 16):
         device = next(unet.parameters()).device
-
-        if is_list_str(cond):
-            cond = bert_embed(tokenize(cond)).to(device)
 
         batch_size = cond.shape[0] if exists(cond) else batch_size
         return self.p_sample_loop(unet, (batch_size, self.channels, self.num_frames, self.height, self.width), cond = cond, cond_scale = cond_scale)
@@ -1162,32 +876,6 @@ def seek_all_images(img, channels = 1):
             break
         i += 1
 
-# tensor of shape (channels, frames, height, width) -> gif
-#A: dim tensor = 3x8x4*128x4*128
-def video_tensor_to_gif(tensor, path, duration = 120, loop = 0, optimize = True):
-    array = tensor.detach().cpu().numpy()
-
-    # reshape the numpy array to video dimensions
-    array = np.transpose(array, (1, 2, 3, 0))
-    array = np.uint8(array * 255)
-
-    # create video using OpenCV
-    out = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'DIVX'), 30, (tensor.shape[3], tensor.shape[2]), False)
-    for i in range(tensor.shape[1]):
-        out.write(array[i])
-    out.release()
-    return 
-
-# gif -> (channels, frame, height, width) tensor
-
-
-
-def gif_to_tensor(path, channels = 1, transform = T.ToTensor()):
-    img = Image.open(path)
-    tensors = tuple(map(transform, seek_all_images(img, channels = channels)))
-    #A: retorna una concatenacio de tots els tensors
-    return torch.stack(tensors, dim = 1)
-
 def identity(t, *args, **kwargs):
     return t
 
@@ -1221,29 +909,8 @@ def count_parameters(model):
     print(table)
     print(f"Total Trainable Params: {total_params}")
     return total_params
-
-'''def video_to_images(video_tensor, output_folder, num_video):
-    num_canales, num_frames, altura, anchura = video_tensor.size()
-    final_folder = os.path.join(output_folder, num_video)
-    os.makedirs(final_folder, exist_ok=True)
-    # Itera sobre cada frame y guárdalo como una imagen TIFF en escala de grises
-    for i in range(num_frames):
-        # Obtén el frame actual
-        frame = video_tensor[:, i, :, :]
-        print('frame', frame.shape)
         
-        normalized_frame = (frame - frame.min()) / (frame.max() - frame.min())
-        normalized_frame = (normalized_frame * 255).byte()
-    
-        normalized_frame = normalized_frame.squeeze()
-        print('frame', normalized_frame.shape)
-        # Crea una nueva imagen PIL a partir del tensor
-        imagen = Image.fromarray(normalized_frame.cpu().byte().numpy(), mode='L')
-        image_path = f"{final_folder}/frame_{i}.tiff"
-        # Guarda la imagen en formato TIFF
-        imagen.save(image_path)'''
-        
-def video_to_images(video_tensor, output_folder, num_video):
+def tensor_to_frames(video_tensor, output_folder, num_video):
     num_canales, num_frames, altura, anchura = video_tensor.size()
     final_folder = os.path.join(output_folder, num_video)
     os.makedirs(final_folder, exist_ok=True)
@@ -1263,6 +930,20 @@ def video_to_images(video_tensor, output_folder, num_video):
         image_path = f"{final_folder}/frame_{i}_125.tiff"
         # Guarda la imagen en formato TIFF
         imagen.save(image_path)
+        
+def tensor_to_video(tensor, path):
+    array = tensor.detach().cpu().numpy()
+
+    # reshape the numpy array to video dimensions
+    array = np.transpose(array, (1, 2, 3, 0))
+    array = np.uint8(array * 255)
+
+    # create video using OpenCV
+    out = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'DIVX'), 30, (tensor.shape[3], tensor.shape[2]), False)
+    for i in range(tensor.shape[1]):
+        out.write(array[i])
+    out.release()
+    return 
 
 class Dataset(data.Dataset):
     def __init__(
@@ -1281,23 +962,24 @@ class Dataset(data.Dataset):
         self.height = height
         self.width = width
         self.channels = channels
-        #A: self.paths conte el path cap a cada un dels gifs
-        #self.paths = [p for ext in exts for p in Path(f'{folder}').glob(f'**/*.{ext}')]
-        folder_path = Path(folder)
+        #A: self.paths conte el path cap a cada un dels videos
+        
+        #READ VIDEOS
+        self.paths = [p for ext in exts for p in Path(f'{folder}').glob(f'**/*.{ext}')]
+        
+        #READ FRAMES
+        '''folder_path = Path(folder)
         paths = []
         for p in folder_path.glob(f'**/'):
             parts = str(p).split("/")
             if len(parts) == 6:
                 paths.append(p)
-        self.paths = paths
+        self.paths = paths'''
 
         self.cast_num_frames_fn = partial(cast_num_frames, frames = num_frames) if force_num_frames else identity
 
         self.transform = T.Compose([
-            #T.Resize(image_size),
             T.RandomHorizontalFlip() if horizontal_flip else T.Lambda(identity),
-            #T.CenterCrop(image_size),
-            #T.ToTensor()
         ])
 
     def __len__(self):
@@ -1306,45 +988,27 @@ class Dataset(data.Dataset):
     #A: If x is an instance of Dataset, then x[i] is roughly equivalent to type(x).__getitem__(x, i)
     #A: El metode __getitem__ s'executa cada cop que es fa "Dataset[i]" o "for gg in Dataset"
     def __getitem__(self, index):
-        totensor = torchvision.transforms.ToTensor()
         path = self.paths[index]
-        '''video = []
-        for filename in os.listdir(path):
-            if filename.endswith('.png'):
-                file_path = os.path.join(path, filename)
-                frame = Image.open(file_path).convert("L")
-                frame_tensor = totensor(frame)
-                frame_tensor = self.transform(frame_tensor)
-                video.append(frame_tensor)'''
-                
+        
+        '''#READ FRAMES   
+        totensor = torchvision.transforms.ToTensor()     
         video = []
         for nombre_archivo in sorted(os.listdir(path)):
             if nombre_archivo.endswith('.tiff'):
                 ruta_completa = os.path.join(path, nombre_archivo)
                 imagen = cv2.imread(ruta_completa)
-                '''resized_image = cv2.resize(imagen, (640, 480))
-                cropped_image = resized_image[70:454, 80:592]
-                resized_image = cv2.resize(cropped_image, (128, 96))
-                gray_image = cv2.cvtColor(resized_image, cv2.COLOR_BGR2GRAY)'''
                 gray_image = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
                 frame_tensor = totensor(gray_image)
                 video.append(frame_tensor)
+        video_tensor = torch.stack(video, dim=0)'''
         
-        if len(video) == 0:
-            print('path', path)
-        video_tensor = torch.stack(video, dim=0)
-        video_tensor=torch.transpose(video_tensor, 0,1)
-        print('video_tensor', video_tensor.shape)
-        '''#A: tensor es un tensor de dimensions Channels x Frames x Height x Weight corresponent al gif del path path
-        #tensor = gif_to_tensor(path, self.channels, transform = self.transform)
+        #READ VIDEOS
+        #A: tensor es un tensor de dimensions Channels x Frames x Height x Weight
         tensor=torchvision.io.read_video(str(path), output_format='TCHW')[0].float()/255
         print('tensor', tensor.shape)
         gray_tensor = torch.mean(tensor, dim=1, keepdim=True)
-        #tensor = torch.stack([self.transform(x) for x in tensor], dim=0)
-        tensor = self.transform(gray_tensor)
-        tensor=torch.transpose(tensor, 0,1)
-        #A: Es retorna el tensor tensor. El sel.cast_... es un metode de control de dimensions del tensors
-        return self.cast_num_frames_fn(tensor)'''
+        video_tensor = self.transform(gray_tensor)
+        video_tensor=torch.transpose(video_tensor, 0,1)
         return self.cast_num_frames_fn(video_tensor)
 
 # trainer class
@@ -1404,10 +1068,10 @@ class Trainer(object):
         #A: self.ds es un objecte instancia de la classe Dataset amb metode __getitem__ entre d'altres
         self.ds = Dataset(folder, height, width, channels = channels, num_frames = num_frames)
 
-        print(f'found {len(self.ds)} videos as gif files at {folder}')
+        print(f'found {len(self.ds)} videos as AVI files at {folder}')
         assert len(self.ds) > 0, 'need to have at least 1 video to start training (although 1 is not great, try 100k)'
 
-        #A: si batch_size=None, self.dl es un objecte (instancia de DataLoader) iterable (degut a cycle()) dels tensors corresponents a tots els gifs que l'usuari subministra a l'entrenament. "El format d'aquests tensors s'ha definit a __getitem__ de la classe Dataset" (Entre cometes perq a cycle iterem un objecte de la classe Dataloader, no Dataset. Tot i així hi ha part de cert perq Dataset es argument de Dataloader i, per tant, al iterar sobre DataLoader, en part, "iteres sobre Dataset")
+        #A: si batch_size=None, self.dl es un objecte (instancia de DataLoader) iterable (degut a cycle()) dels tensors corresponents a tots els videos que l'usuari subministra a l'entrenament. "El format d'aquests tensors s'ha definit a __getitem__ de la classe Dataset" (Entre cometes perq a cycle iterem un objecte de la classe Dataloader, no Dataset. Tot i així hi ha part de cert perq Dataset es argument de Dataloader i, per tant, al iterar sobre DataLoader, en part, "iteres sobre Dataset")
         #A: si batch_size=num, self.dl es un objecte (instancia de DataLoader) iterable (degut a cycle()) de tensors on cada tensor representa un mini batch. Per tant, les dimensions dels tensors son BatchSize x Channels x Frames x Height x Weight
         self.dl = cycle(data.DataLoader(self.ds, batch_size = train_batch_size, shuffle=True, pin_memory=True))
         #self.opt = Adam([{"params": self.unet.u.parameters()}, {"params": self.unet.dos.parameters()}, {"params": self.unet.tres.parameters()}, {"params": self.unet.time_mlp.parameters()}], lr = train_lr)
@@ -1447,7 +1111,6 @@ class Trainer(object):
     def reset_parameters(self):
         #A: Recordar que self.ema_model es una "copia" (que es copia i que no?=>copia l'estructura pero no els parametres) d'un objecte instancia GaussianModel. Aqui copiem els parametres
         self.ema_model.load_state_dict(self.unet.state_dict()) 
-        #A: que es state_dict? https://pytorch.org/tutorials/recipes/recipes/what_is_state_dict.html
         #A: Per tant, en aquest metode ens asegurem que ema_model i model s'inicialitzin amb els mateixos parametres
 
     def step_ema(self):
@@ -1518,11 +1181,14 @@ class Trainer(object):
                     all_videos_list = list(map(lambda n: self.diffusion.sample(unet = self.ema_model, batch_size=n), batches))
                     all_videos_list = torch.cat(all_videos_list, dim = 0)
 
-                    one_gif = rearrange(all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i = self.num_sample_rows)
+                    one_video = rearrange(all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i = self.num_sample_rows)
+                    
+                    #SAMPLE VIDEOS
                     video_path = str(self.results_folder / str(f'{milestone}.avi'))
-                    print('one_gif', one_gif.shape)
-                    video_to_images(one_gif, self.results_folder, str(f'video-{milestone}'))
-                    #video_tensor_to_gif(one_gif, video_path)
+                    tensor_to_video(one_video, video_path)
+                    
+                    #SAMPLE FRAMES
+                    #tensor_to_frames(one_video, self.results_folder, str(f'video-{milestone}'))
 
             self.step += 1
             
@@ -1532,35 +1198,3 @@ class Trainer(object):
 
         print('training completed')
         
-        '''video_path_tiff_fvd = '/data/aolivepe/cos_tau_3_tiff_fvd'
-        video_path_tiff_fid = '/data/aolivepe/cos_tau_3_tiff_fid'
-
-        for n in reversed(range(224)):
-            #diffusion.sample(unet = unet, batch_size = 1)
-
-            num_sample_rows = 1
-
-            num_samples = num_sample_rows ** 2 #A: num_samples=16
-            #batches = num_to_groups(num_samples, batch_size)#A: batches = [4,4,4,4]
-            batches = [1]
-
-            all_videos_list = list(map(lambda n: self.diffusion.sample(unet = self.ema_model, batch_size=n), batches))
-            all_videos_list = torch.cat(all_videos_list, dim = 0)
-
-            one_gif = rearrange(all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i = num_sample_rows)
-            #video_path = str(self.results_folder / str(f'{milestone}.avi'))
-            video_to_images(one_gif, video_path_tiff_fvd, str(n))
-        i=0
-        for directorio_actual, subdirectorios, archivos in os.walk(video_path_tiff_fvd):
-            for subdirectorio in subdirectorios:
-                ruta_subdirectorio = os.path.join(directorio_actual, subdirectorio)
-                archivos_tiff = [archivo for archivo in os.listdir(ruta_subdirectorio) if archivo.endswith('.tiff')]
-                archivos_tiff.sort()
-                for archivo_tiff in archivos_tiff:
-                    origen = os.path.join(ruta_subdirectorio,archivo_tiff)
-                    print('original', os.path.join(ruta_subdirectorio,archivo_tiff))
-                    print('final', video_path_tiff_fid)
-                    nombre_archivo = os.path.basename(origen)
-                    nuevo_archivo = os.path.join(video_path_tiff_fid, f'{i}.tiff')
-                    shutil.copy(origen, nuevo_archivo)
-                    i+=1'''
